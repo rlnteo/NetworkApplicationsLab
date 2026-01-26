@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Automobil/Automobil.csproj" />
+  <Project Path="DirekcijaTrke/DirekcijaTrke.csproj" />
+  <Project Path="Garaza/Garaza.csproj" />
+</Solution>
