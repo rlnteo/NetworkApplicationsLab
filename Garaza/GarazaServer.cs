@@ -18,7 +18,7 @@ namespace Garaza
                ProtocolType.Tcp
              );
 
-            IPEndPoint serverEP = new IPEndPoint(IPAddress.Any, 19010);
+            IPEndPoint serverEP = new IPEndPoint(IPAddress.Any, 5000);
             serverSocket.Bind(serverEP);
             serverSocket.Listen(1);
 

@@ -6,7 +6,17 @@ using System.Threading.Tasks;
 
 namespace Automobil
 {
-    internal class KonfiguracijaAutomobila
+    public class KonfiguracijaAutomobila
     {
+        public string Marka { get; set; }
+        public double PotrosnjaGuma { get; set; }
+        public double PotrosnjaGoriva { get; set; }
+
+        public KonfiguracijaAutomobila(string marka, double potrosnjaGuma, double potrosnjaGoriva)
+        {
+            Marka = marka;
+            PotrosnjaGuma = potrosnjaGuma;
+            PotrosnjaGoriva = potrosnjaGoriva;
+        }
     }
 }
