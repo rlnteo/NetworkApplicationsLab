@@ -54,18 +54,51 @@ namespace Automobil
             Console.WriteLine($"Potrošnja goriva: {konfiguracija.PotrosnjaGoriva} l/km");
 
 
-            Socket tcpSocket = new Socket(
+            Socket clientSocket = new Socket(
             AddressFamily.InterNetwork,
             SocketType.Stream,
             ProtocolType.Tcp);
 
             IPEndPoint garazaEP = new IPEndPoint(IPAddress.Loopback, 5000);
+            byte[] buffer = new byte[1024];
 
-            tcpSocket.Connect(garazaEP);
-
+            Console.WriteLine("Povezivanje sa garažom...");
+            Console.ReadKey();
+            clientSocket.Connect(garazaEP);
             Console.WriteLine("TCP konekcija sa garažom uspostavljena.");
 
+            while(true)
+            {
+                Console.WriteLine("Unesite poruku: ");
+                try
+                {
+                    string poruka = Console.ReadLine();
+                    int brBajta = clientSocket.Send(Encoding.UTF8.GetBytes(poruka));
 
+                    if (poruka == "kraj")
+                        break;
+
+                    brBajta = clientSocket.Receive(buffer);
+
+                    if (brBajta == 0)
+                    {
+                        Console.WriteLine("Server je zavrsio sa radom");
+                        break;
+                    }
+
+                    string odgovor = Encoding.UTF8.GetString(buffer);
+
+                    Console.WriteLine(odgovor);
+                    if (odgovor == "kraj")
+                        break;
+
+                }
+                catch (SocketException ex)
+                {
+                    Console.WriteLine($"Doslo je do greske tokom slanja:\n{ex}");
+                    break;
+                }
+            }
 
 
             UdpClient udpClient = new UdpClient(0);

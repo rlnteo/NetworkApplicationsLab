@@ -21,10 +21,10 @@ namespace DirekcijaTrke
         static void Main(string[] args)
         {
             //“Pri pokretanju, server otvara TCP utičnicu i ispisuje podatke o njoj”
-            const int serverPort = 5000;
+            const int serverPort = 5002;
 
             // Dictionary: kljuc = "broj-proizvodjac", vrednost = lista vremena krugova
-            Dictionary<string, List<double>> rezultatPoKrugu = new Dictionary<string, List<double>>();
+            Dictionary<string, List<double>> resultByLap = new Dictionary<string, List<double>>();
 
             // Kreiranje TCP socket-a
             Socket serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
@@ -38,37 +38,85 @@ namespace DirekcijaTrke
             Console.WriteLine($"Port: {serverPort}");
             Console.WriteLine("Čeka se povezivanje automobila...");
 
+
+            Socket clientSocket = serverSocket.Accept();
+            IPEndPoint remoteEndPoint = clientSocket.RemoteEndPoint as IPEndPoint;
+
+            Console.WriteLine($"Automobil povezan sa adrese: {remoteEndPoint.Address}:{remoteEndPoint.Port}");
+
+            //prijem podataka
+            byte[] buffer = new byte[1024];
+
             //prihvatanje klijenata (bolida)
             while (true)
             {
-                Socket clientSocket = serverSocket.Accept();
-                IPEndPoint remoteEndPoint = clientSocket.RemoteEndPoint as IPEndPoint;
-
-                Console.WriteLine($"Automobil povezan sa adrese: {remoteEndPoint.Address}:{remoteEndPoint.Port}");
-
-                //prijem podataka
-                byte[] buffer = new byte[1024];
-                int bytesRecieved = clientSocket.Receive(buffer);
-                string message = Encoding.UTF8.GetString(buffer, 0, bytesRecieved);
-
-                //KAKAV FORMAT PORUKE OCEKUJEMO: "16-Ferrari;71.278"
-                string[] delovi = message.Split(';');
-                string kljuc = delovi[0]; // "16-Ferrari"
-                double vremeKruga = double.Parse(delovi[1]); // 71.278
-
-                //smestanje podataka u Dictionary
-                if (!rezultatPoKrugu.ContainsKey(kljuc))
+                try
                 {
-                    rezultatPoKrugu[kljuc] = new List<double>();
+                    int bytesRecieved = clientSocket.Receive(buffer);
+                    if (bytesRecieved == 0)
+                    {
+                        Console.WriteLine("Klijent je zavrsio sa radom (nema podataka).");
+                        continue;
+                    }
+                    string message = Encoding.UTF8.GetString(buffer);
+
+                    Console.WriteLine(message);
+                    if (message == "kraj")
+                    {
+                        Console.WriteLine("Server je zavrsio sa radom po zahtevu klijenta.");
+                        break;
+                    }
+
+
+                    string[] parts = message.Split(';');
+                    if (parts.Length != 2)
+                    {
+                        Console.WriteLine($"Neispravan format poruke: {message}");
+                        continue;
+                    }
+
+                    string response = Console.ReadLine();
+
+                    bytesRecieved = clientSocket.Send(Encoding.UTF8.GetBytes(response));
+                    if (response == "kraj")
+                    {
+                        Console.WriteLine("Server je zavrsio sa radom po zahtevu korisnika.");
+                        break;
+                    }
+           
+                    string key = parts[0]; 
+                    double lapTime; 
+
+                    if (!double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out lapTime))
+                    {
+                        Console.WriteLine($"Neispravno vreme kruga: '{parts[1]}'");
+                        continue;
+                    }
+
+                    //smestanje podataka u Dictionary
+                    if (!resultByLap.ContainsKey(key))
+                    {
+                        resultByLap[key] = new List<double>();
+                    }
+
+                    resultByLap[key].Add(lapTime);
+                    Console.WriteLine($"Primljeni podaci -> {key}, vreme kruga: {lapTime}s");
                 }
-
-                rezultatPoKrugu[kljuc].Add(vremeKruga);
-                Console.WriteLine($"Primljeni podaci -> {kljuc}, vreme kruga: {vremeKruga}s");
-
-                //zatvaranje konekcije sa klijentom
-                clientSocket.Shutdown(SocketShutdown.Both);
-                clientSocket.Close();
+                catch (SocketException ex)
+                {
+                    Console.WriteLine($"Doslo je do Socket greske: {ex.Message}");
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Greska: {ex.Message}");
+                    break;
+                }
             }
+            Console.WriteLine("Server zavrsava sa radom");
+            Console.ReadKey();
+            clientSocket.Close();
+            serverSocket.Close();
         }
     }
 }
