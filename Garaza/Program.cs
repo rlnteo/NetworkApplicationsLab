@@ -10,6 +10,10 @@ namespace Garaza
     {
         static void Main(string[] args)
         {
+            GarazaServer server = new GarazaServer();
+            server.Pokreni();
+
+            Console.ReadLine();
         }
     }
 }

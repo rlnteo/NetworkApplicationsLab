@@ -1,5 +1,5 @@
 <Solution>
-  <Project Path="Automobil/Automobil.csproj" />
-  <Project Path="DirekcijaTrke/DirekcijaTrke.csproj" />
-  <Project Path="Garaza/Garaza.csproj" />
+  <Project Path="Automobil/Automobil.csproj" Id="2f6b6fa9-f09b-4bf4-a4a5-fd0a587c8d7c" />
+  <Project Path="DirekcijaTrke/DirekcijaTrke.csproj" Id="f5e9a578-27ce-419a-8cb2-4a9a837f81a2" />
+  <Project Path="Garaza/Garaza.csproj" Id="b00ab3ee-3007-48f0-abaf-b903b1b28294" />
 </Solution>
