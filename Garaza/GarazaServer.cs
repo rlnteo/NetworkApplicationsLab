@@ -20,7 +20,7 @@ namespace Garaza
 
             IPEndPoint serverEP = new IPEndPoint(IPAddress.Any, 5000);
             serverSocket.Bind(serverEP);
-            serverSocket.Listen(1);
+            serverSocket.Listen(2);
 
             Console.WriteLine("Garaža je pokrenuta.");
             Console.WriteLine($"TCP utičnica otvorena na adresi: {serverEP}");
@@ -33,8 +33,14 @@ namespace Garaza
             Console.Write("Unesite osnovno vreme kruga (u sekundama): ");
             string unosVremena = Console.ReadLine();
             double osnovnoVreme = double.Parse(unosVremena);
-     
-            UdpClient udpClient = new UdpClient();
+
+
+            // UdpClient udpClient = new UdpClient();
+            // IPEndPoint udpEP = udpClient.Client.LocalEndPoint as IPEndPoint;
+            Socket udpClient = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            IPEndPoint udpEP = new IPEndPoint(IPAddress.Any, 6000);
+            Console.WriteLine($"UDP utičnica otvorena na portu {udpEP.Port}");
+
             Console.WriteLine($"Izaberite komponentu guma (M/S/T): ");
             char gume = Console.ReadKey().KeyChar;
             Console.WriteLine();
@@ -44,11 +50,11 @@ namespace Garaza
 
             string poruka = $"Izlazak na stazu: {gume},{gorivo}";
 
-            IPEndPoint autoEP = new IPEndPoint(IPAddress.Loopback, 6000);
+            IPEndPoint autoEP = new IPEndPoint(IPAddress.Loopback, 5000);
             byte[] data = Encoding.UTF8.GetBytes(poruka);
             udpClient.Send(data, data.Length, autoEP);
 
-            Console.WriteLine("Direktiva poslata automobilu.");
+            Console.WriteLine($"Poruka poslata automobilu:\n {poruka }");
         }
     }
 }

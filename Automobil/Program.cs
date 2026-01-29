@@ -63,81 +63,82 @@ namespace Automobil
             byte[] buffer = new byte[1024];
 
             Console.WriteLine("Povezivanje sa garažom...");
-            Console.ReadKey();
             clientSocket.Connect(garazaEP);
-            Console.WriteLine("TCP konekcija sa garažom uspostavljena.");
+            Console.WriteLine("TCP konekcija sa garažom uspostavljena:");
+            Console.WriteLine($"Lokalna adresa: {clientSocket.LocalEndPoint}");
+            Console.WriteLine($"Adresa garaže: {clientSocket.RemoteEndPoint}");
 
-            while(true)
+
+            Socket udpClient = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            IPEndPoint udpEP = new IPEndPoint(IPAddress.Any, 6000);
+            udpClient.Bind(udpEP);
+
+            udpClient.Blocking = false;
+
+            Console.WriteLine($"UDP utičnica otvorena:");
+            Console.WriteLine($"Lokalna adresa: {udpEP.Address}:{udpEP.Port}");
+
+
+            byte[] prijemniBafer = new byte[1024];
+            EndPoint posiljalacEP = new IPEndPoint(IPAddress.Any, 0);
+
+
+            try
             {
-                Console.WriteLine("Unesite poruku: ");
-                try
+                Console.WriteLine("Čekam UDP poruku od garaže...");
+
+                while (true)
                 {
-                    string poruka = Console.ReadLine();
-                    int brBajta = clientSocket.Send(Encoding.UTF8.GetBytes(poruka));
+                    List<Socket> checkRead = new List<Socket> { udpClient };
+                    List<Socket> checkError = new List<Socket> { udpClient };
 
-                    if (poruka == "kraj")
-                        break;
+                    Socket.Select(checkRead, null, checkError, 1000 * 1000);
 
-                    brBajta = clientSocket.Receive(buffer);
-
-                    if (brBajta == 0)
+                    if (checkRead.Count > 0)
                     {
-                        Console.WriteLine("Server je zavrsio sa radom");
+                        int brBajta = udpClient.ReceiveFrom(prijemniBafer, ref posiljalacEP);
+                        string poruka = Encoding.UTF8.GetString(prijemniBafer, 0, brBajta);
+
+                        Console.WriteLine($"Primljena UDP poruka: {poruka}");
+
+                        // Obrada poruke 
+                        string[] delovi = poruka.Split(':');
+
+                        string parametri = delovi[1].Trim(); // "M,50"
+                        string[] vrednosti = parametri.Split(',');
+
+                        string guma = vrednosti[0];           // M / S / T
+                        double gorivo = double.Parse(vrednosti[1]);
+
+                        // Odredi trajanje guma
+                        int maxTrajanjeGuma = 0;
+
+                        if (guma == "M") maxTrajanjeGuma = 80;
+                        else if (guma == "S") maxTrajanjeGuma = 100;
+                        else if (guma == "T") maxTrajanjeGuma = 120;
+
+                        // Sačuvaj stanje
+                        double trenutnoGorivo = gorivo;
+
+                        Console.WriteLine($"Gume: {guma}, trajanje {maxTrajanjeGuma} km");
+                        Console.WriteLine($"Početno gorivo: {trenutnoGorivo} litara");
+
                         break;
                     }
 
-                    string odgovor = Encoding.UTF8.GetString(buffer);
-
-                    Console.WriteLine(odgovor);
-                    if (odgovor == "kraj")
+                    if (checkError.Count > 0)
+                    {
+                        Console.WriteLine("Greška na UDP utičnici.");
                         break;
+                    }
+                }
 
-                }
-                catch (SocketException ex)
-                {
-                    Console.WriteLine($"Doslo je do greske tokom slanja:\n{ex}");
-                    break;
-                }
             }
-
-
-            UdpClient udpClient = new UdpClient(0);
-
-            IPEndPoint udpEP = udpClient.Client.LocalEndPoint as IPEndPoint;
-
-            Console.WriteLine($"UDP utičnica otvorena na portu {udpEP.Port}");
-
-
-            Console.WriteLine("Izaberite komponentu guma:");
-            Console.WriteLine("M - Meke (80 km)");
-            Console.WriteLine("S - Srednje (100 km)");
-            Console.WriteLine("T - Tvrde (120 km)");
-
-            char gume = char.Parse(Console.ReadLine().ToUpper());
-
-            double maxTrajanjeGuma = 0;
-
-            switch (gume)
+            catch (Exception ex)
             {
-                case 'M':
-                    maxTrajanjeGuma = 80;
-                    break;
-                case 'S':
-                    maxTrajanjeGuma = 100;
-                    break;
-                case 'T':
-                    maxTrajanjeGuma = 120;
-                    break;
-                default:
-                    Console.WriteLine("Neispravan izbor guma!");
-                    return;
+                Console.WriteLine($"Greška pri prijemu podataka: {ex.Message}");
             }
 
-            double trenutnoStanjeGuma = maxTrajanjeGuma;
-            double trenutnoGorivo = 100; // početno gorivo
-
-            Console.WriteLine($"Gume: {gume}, trajanje {maxTrajanjeGuma} km");
-            Console.WriteLine($"Početno gorivo: {trenutnoGorivo} litara");
 
         }
     }
