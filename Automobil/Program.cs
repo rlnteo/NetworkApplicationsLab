@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -11,6 +12,7 @@ namespace Automobil
 {
     internal class Program
     {
+        private static int trkackiBroj;
         static void Main(string[] args)
         {
             KonfiguracijaAutomobila konfiguracija = new KonfiguracijaAutomobila();
@@ -38,7 +40,8 @@ namespace Automobil
             byte[] buffer = new byte[1024];
 
             Console.WriteLine("Povezivanje sa garažom...");
-            clientSocket.Connect(garazaEP);
+            clientSocket.Connect(garazaEP);  //tcp veza ka garaza 
+            //Cilj je da se automobil veze sa garazom i potvrdi njeno POSTOJANJE - trenutno se samo konektujemo - garaza ima Accept i sve radii
 
             Console.WriteLine("\n---------------------------------------\n");
             Console.WriteLine("TCP konekcija sa garažom uspostavljena:");
@@ -48,8 +51,8 @@ namespace Automobil
 
 
             Socket udpClient = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            IPEndPoint udpEP = new IPEndPoint(IPAddress.Any, 6000);
-            udpClient.Bind(udpEP);
+            IPEndPoint udpEP = new IPEndPoint(IPAddress.Any, 6000); 
+            udpClient.Bind(udpEP); //otvaranje UDP uticnice za komunikaciju sa garazom nakon odabira proizvodjava
 
             udpClient.Blocking = false;
 
@@ -117,58 +120,26 @@ namespace Automobil
                             int maxTrajanjeGuma = TrajanjeGuma(guma);
                             double trenutnoGorivo = gorivo;
 
-
                             izlazakPrimljen = true;
 
                             Console.WriteLine($"Gume: {guma}, trajanje {maxTrajanjeGuma} km");
                             Console.WriteLine($"Početno gorivo: {trenutnoGorivo} litara");
 
-                            SimulirajVoznju( duzinaStaze, osnovnoVreme, guma, gorivo, konfiguracija);
+                            //OVO JE SIGNAL DA SINULACIJA KRECE - PRIMIMO ONFO O TIPU GUME I STANJU GORIVA
 
-                            // ===============================
-                            // KREĆE SIMULACIJA
-                            // ===============================
-                            /*if (stazaPrimljena)
-                            {
-                                
-                                int brojKruga = 1;
+                            //TCP prijava Direkciji trke - dobijamo trkacki broj
+                            Socket direkcijaSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                            direkcijaSocket.Connect(new IPEndPoint(IPAddress.Loopback, 5002));
 
-                                Console.WriteLine("\n--- Automobil je izašao na stazu ---\n");
+                            trkackiBroj = PrijaviSeDirekciji(direkcijaSocket, konfiguracija.Marka);  //Prijavi se direkciji salje PRIJAVA;marka , PRIMA BROJ;n - parsira n i vrati ga
+                            //CILJ JE DA DOBIJEMO ID (trkackiBroj) koji koristimo ka kljuc pri slanju vremena
+                            Console.WriteLine($"Prijava Direkciji trke uspešna. Trkački broj: {trkackiBroj}");
 
-                                while (trenutnoGorivo > 0 && maxTrajanjeGuma > 0)
-                                {
-                                    // 1. POTROŠNJA
-                                    maxTrajanjeGuma -= (int)(duzinaStaze * 0.3);   // potrošnja guma (osnovna)
-                                    trenutnoGorivo -= duzinaStaze * 0.6;           // potrošnja goriva (osnovna)
+                            //simulacija + slanje vremena Direkciji preko istog soktea
+                            SimulirajVoznju( duzinaStaze, osnovnoVreme, guma, gorivo, konfiguracija, direkcijaSocket);
 
-                                    // 2. TEMPO GORIVA
-                                    double tempoGoriva = 1 / trenutnoGorivo;
-
-                                    // 3. TEMPO GUMA
-                                    double tempoGuma = 0;
-                                    if (guma == "M") tempoGuma = 1.2 * brojKruga;
-                                    else if (guma == "S") tempoGuma = brojKruga;
-                                    else if (guma == "T") tempoGuma = 0.8 * brojKruga;
-
-                                    // 4. VREME KRUGA
-                                    double vremeKruga = osnovnoVreme - tempoGoriva - tempoGuma;
-
-                                    Console.WriteLine($"Krug {brojKruga}");
-                                    Console.WriteLine($"Vreme kruga: {vremeKruga:F2} s");
-                                    Console.WriteLine($"Preostalo gorivo: {trenutnoGorivo:F2} l");
-                                    Console.WriteLine($"Preostale gume: {maxTrajanjeGuma} km");
-                                    Console.WriteLine("--------------------------------");
-
-                                    // 5. AUTOMOBIL "VOZI KRUG"
-                                    Thread.Sleep((int)(vremeKruga * 1000));
-
-                                    brojKruga++;
-                                }
-
-                                Console.WriteLine("\nAutomobil završava vožnju.\n");
-                            }
-                            
-                            break;*/
+                            direkcijaSocket.Close();
+                            break;
                         }
 
 
@@ -186,9 +157,31 @@ namespace Automobil
             {
                 Console.WriteLine($"Greška pri prijemu podataka: {ex.Message}");
             }
-
-
+            finally
+            {
+                Console.WriteLine("Pritisnite taster za izlaz...");
+                Console.ReadKey();
+            }
         }
+
+        //TCP nam salje "PRIJAVA;{marka}" i prima "BROJ;{n}" 
+        static int PrijaviSeDirekciji(Socket direkcijaSocket, string marka)
+        {
+            string prijava = "PRIJAVA;" + marka;
+            direkcijaSocket.Send(Encoding.UTF8.GetBytes(prijava));
+
+            byte[] buffer = new byte[1024];
+            int n = direkcijaSocket.Receive(buffer);
+            string odgovor = Encoding.UTF8.GetString(buffer, 0, n); //OVO NAM JE BROJ;{n}
+
+            string[] delovi = odgovor.Split(';');
+            if (delovi.Length != 2 || !delovi[0].Equals("BROJ", StringComparison.OrdinalIgnoreCase))
+            {
+               throw new InvalidOperationException("Nevažeći odgovor od Direkcije trke.");
+            }
+            return int.Parse(delovi[1], CultureInfo.InvariantCulture);
+        }
+
         static int TrajanjeGuma(string guma)
         {
             switch (guma)
@@ -199,7 +192,9 @@ namespace Automobil
                 default: return 0;
             }
         }
-        static void SimulirajVoznju( double duzinaStaze, double osnovnoVreme, string guma, double pocetnoGorivo, KonfiguracijaAutomobila konfiguracija)
+
+        // CILJ PRIJAVA DIREKCIJI I SIMULACIJA VOZNJE je da direkcija dobije poruku tipa.... i UPISUJE U SVOJ DICTIONARY - 
+        static void SimulirajVoznju( double duzinaStaze, double osnovnoVreme, string guma, double pocetnoGorivo, KonfiguracijaAutomobila konfiguracija, Socket direkcijaSocket)
         {
             double trenutnoGorivo = pocetnoGorivo;
             double maxTrajanjeGuma = TrajanjeGuma(guma);
@@ -253,14 +248,25 @@ namespace Automobil
                 Console.WriteLine($"Preostale gume: {maxTrajanjeGuma:F2} km");
                 Console.WriteLine("--------------------------------");
 
-                Thread.Sleep((int)(vremeKruga * 1000));
+                // SLANJE TCP vremena Direkciji: "{broj}-{marka};{vreme}"
+                string key = trkackiBroj + "-" + konfiguracija.Marka;
+                string msg = key + ";" + vremeKruga.ToString(CultureInfo.InvariantCulture);
+                direkcijaSocket.Send(Encoding.UTF8.GetBytes(msg));
+
+                if (vremeKruga < 0.1)
+                {
+                    Console.WriteLine("Vreme kruga je prenisko/negativno. Prekid simulacije.");
+                    break;
+                }
+
+                int sleepMs = (int)(vremeKruga * 1000); 
+                Thread.Sleep(sleepMs);//simulira trajanje kruga 
 
                 brojKruga++;
             }
 
             Console.WriteLine("\nAutomobil završava vožnju.\n");
         }
-
 
     }
 }

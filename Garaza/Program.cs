@@ -66,6 +66,7 @@ namespace Garaza
             Console.WriteLine($"Unesite kolicinu goriva: ");
             double gorivo = double.Parse(Console.ReadLine());
 
+            //UDP format: "Izlazak na stazu: [gume, jednoslovno][gorivo]"
             string poruka = $"Izlazak na stazu: {gume},{gorivo}";
 
             IPEndPoint autoEP = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 6000);
@@ -73,9 +74,16 @@ namespace Garaza
             udpSocket.SendTo(data, 0, data.Length, SocketFlags.None, autoEP);
 
             Console.WriteLine($"Direktiva poslata automobilu:\n {poruka}");
-
             Console.WriteLine();
-            Console.WriteLine("Garaža završava sa radom.");
+
+            Console.WriteLine($"Čekam da se automobil poveže na TCP 5000...");
+            Socket autoTcp = tcpSocket.Accept();
+            Console.WriteLine($"Automobil povezan sa adrese: {autoTcp.RemoteEndPoint}");
+           
+            Console.WriteLine("Pritisnite enter za kraj");
+            Console.ReadLine();
+
+            autoTcp.Close();
             udpSocket.Close();
             tcpSocket.Close();
         }
