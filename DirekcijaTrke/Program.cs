@@ -24,16 +24,14 @@ namespace DirekcijaTrke
             const int serverPort = 5002;
 
             // Dictionary: kljuc = "broj-proizvodjac", vrednost = lista vremena krugova
-            Dictionary<string, List<double>> resultByLap = new Dictionary<string, List<double>>(); 
-            //Moramo da sacuvamo u posebnoj listi automobile na stazi
-            List<string> automobiliNaStazi = new List<string>();
+            Dictionary<string, List<double>> resultByLap = new Dictionary<string, List<double>>();
 
             // Kreiranje TCP socket-a
             Socket serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             IPEndPoint localEndPoint = new IPEndPoint(IPAddress.Any, serverPort);
 
             serverSocket.Bind(localEndPoint);
-            serverSocket.Listen(2);
+            serverSocket.Listen(10);
 
             Console.WriteLine("Direkcija trke je pokrenuta.");
             Console.WriteLine($"IP: {IPAddress.Any}");
@@ -49,11 +47,6 @@ namespace DirekcijaTrke
             //prijem podataka
             byte[] buffer = new byte[1024];
 
-            int nextRaceNumber = 1;
-            int assignedRaceNumber = 0;
-            string manufacturer = null;
-
-
             //prihvatanje klijenata (bolida)
             while (true)
             {
@@ -63,9 +56,9 @@ namespace DirekcijaTrke
                     if (bytesRecieved == 0)
                     {
                         Console.WriteLine("Klijent je zavrsio sa radom (nema podataka).");
-                        break;
+                        continue;
                     }
-                    string message = Encoding.UTF8.GetString(buffer, 0, bytesRecieved);
+                    string message = Encoding.UTF8.GetString(buffer);
 
                     Console.WriteLine(message);
                     if (message == "kraj")
@@ -74,31 +67,6 @@ namespace DirekcijaTrke
                         break;
                     }
 
-                    //Prva poruka može biti npr : "PRIJAVA;proizvođač"
-                    //Server nam vraća BROJ;n (u vitičastim zagradama)
-
-                    if(assignedRaceNumber == 0 && message.StartsWith("PRIJAVA", StringComparison.OrdinalIgnoreCase))
-                    {
-                        string [] prijavaParts = message.Split(';');
-                        if(prijavaParts.Length == 2)
-                        {
-                            manufacturer = prijavaParts[1];
-                        }
-                        else                           {
-                            manufacturer = "NepoznatProizvođač";
-                        }
-
-                        assignedRaceNumber = nextRaceNumber++;
-
-                        string regResponse = "BROJ;" + assignedRaceNumber.ToString(CultureInfo.InvariantCulture);
-                        clientSocket.Send(Encoding.UTF8.GetBytes(regResponse));
-
-                        Console.WriteLine($"Dodeljen trkački broj: {assignedRaceNumber} ({manufacturer})");
-                        //dodavanje u listu automobila na stazi
-                        automobiliNaStazi.Add(assignedRaceNumber + "-" + manufacturer);
-                        Console.WriteLine("AUTOMOBILI NA STAZI: " + string.Join(", ", automobiliNaStazi));
-                        continue;
-                    }
 
                     string[] parts = message.Split(';');
                     if (parts.Length != 2)
