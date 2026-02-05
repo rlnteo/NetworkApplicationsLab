@@ -5,11 +5,14 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 
 namespace Garaza
 {
     internal class Program
     {
+        private const int AutoUdpPort = 6000;
+        private const int GarazaUdpPortZaPrijemStanja = 6001;
         static void Main(string[] args)
         {
             Socket tcpSocket = new Socket(
@@ -38,7 +41,7 @@ namespace Garaza
 
 
             Socket udpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            IPEndPoint udpEP = new IPEndPoint(IPAddress.Loopback, 6000);
+            IPEndPoint udpEP = new IPEndPoint(IPAddress.Loopback, AutoUdpPort);
 
             Console.WriteLine("\n---------------------------------------\n");
             Console.WriteLine($"UDP utičnica otvorena na portu {udpEP.Port}");
@@ -73,6 +76,46 @@ namespace Garaza
             udpSocket.SendTo(data, 0, data.Length, SocketFlags.None, autoEP);
 
             Console.WriteLine($"Direktiva poslata automobilu:\n {poruka}");
+
+            // 3) UDP prijem stanja od automobila (6001)
+            Socket udpSocketRecv = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            udpSocketRecv.Bind(new IPEndPoint(IPAddress.Any, GarazaUdpPortZaPrijemStanja));
+
+
+            Console.WriteLine();
+            Console.WriteLine("Garaža prima stanje na UDP 6001.");
+            Console.WriteLine("Komande tempa: b=Brze, s=Sporije, m=Srednje, q=izlaz");
+
+            byte[] buf = new byte[1024];
+
+            while (true)
+            {
+                // Non-blocking tempo input
+                if (Console.KeyAvailable)
+                {
+                    char c = char.ToLowerInvariant(Console.ReadKey(true).KeyChar);
+                    if (c == 'q') break;
+
+                    string tempoMsg = null;
+                    if (c == 'b') tempoMsg = "Tempo: Brze";
+                    else if (c == 's') tempoMsg = "Tempo: Sporije";
+                    else if (c == 'm') tempoMsg = "Tempo: Srednje";
+
+                    if (tempoMsg != null)
+                    {
+                        byte[] tdata = Encoding.UTF8.GetBytes(tempoMsg);
+                        udpSocket.SendTo(tdata, autoEP);
+                        Console.WriteLine("Poslata direktiva -> " + tempoMsg);
+                    }
+                }
+
+                // Blokirajuće čekanje stanja (može i sa timeoutom, ali ovako je najjednostavnije)
+                EndPoint from = new IPEndPoint(IPAddress.Any, 0);
+                int n = udpSocketRecv.ReceiveFrom(buf, ref from);
+                string stanje = Encoding.UTF8.GetString(buf, 0, n).Trim();
+
+                Console.WriteLine("Primljeno stanje: " + stanje);
+            }
 
             Console.WriteLine();
             Console.WriteLine("Garaža završava sa radom.");

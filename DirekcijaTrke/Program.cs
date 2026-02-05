@@ -1,18 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading.Tasks;
-
-/*DirekcijaTrke - TCP server
- * otvara TCP socket
- * pisemo info o socketu
- * prima podatke od automobila
- * smesta ih u Dictionary<string, List<double>>
-*/
 
 namespace DirekcijaTrke
 {
@@ -20,103 +11,203 @@ namespace DirekcijaTrke
     {
         static void Main(string[] args)
         {
-            //“Pri pokretanju, server otvara TCP utičnicu i ispisuje podatke o njoj”
             const int serverPort = 5002;
 
-            // Dictionary: kljuc = "broj-proizvodjac", vrednost = lista vremena krugova
+            // key = "broj-proizvodjac", value = lista vremena krugova
             Dictionary<string, List<double>> resultByLap = new Dictionary<string, List<double>>();
 
-            // Kreiranje TCP socket-a
-            Socket serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            IPEndPoint localEndPoint = new IPEndPoint(IPAddress.Any, serverPort);
+            // aktivni automobili na stazi (samo trkacki brojevi)
+            HashSet<string> aktivniAutomobili = new HashSet<string>();
 
-            serverSocket.Bind(localEndPoint);
+            //mapiranje soketa na trkacki broj (da znamo koga uklanjamo)
+            Dictionary<Socket, string> brojPoSoketu = new Dictionary<Socket, string>();
+
+            //dodatne info o automobilu
+            Dictionary<string, string> markaPoBroju = new Dictionary<string, string>();
+            Dictionary<string, IPEndPoint> endPointPoBroju = new Dictionary<string, IPEndPoint>();
+
+            int sledeciBroj = 1;
+
+            Socket serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            serverSocket.Bind(new IPEndPoint(IPAddress.Any, serverPort));
             serverSocket.Listen(10);
+            serverSocket.Blocking = false;
 
             Console.WriteLine("Direkcija trke je pokrenuta.");
             Console.WriteLine($"IP: {IPAddress.Any}");
             Console.WriteLine($"Port: {serverPort}");
             Console.WriteLine("Čeka se povezivanje automobila...");
 
+            List<Socket> clientSockets = new List<Socket>();
 
-            Socket clientSocket = serverSocket.Accept();
-            IPEndPoint remoteEndPoint = clientSocket.RemoteEndPoint as IPEndPoint;
-
-            Console.WriteLine($"Automobil povezan sa adrese: {remoteEndPoint.Address}:{remoteEndPoint.Port}");
-
-            //prijem podataka
-            byte[] buffer = new byte[1024];
-
-            //prihvatanje klijenata (bolida)
             while (true)
             {
-                try
+                //Socket.Select menja liste -> inicijalizacija u svakoj iteraciji
+                List<Socket> checkRead = new List<Socket>();
+                List<Socket> checkError = new List<Socket>();
+
+                checkRead.Add(serverSocket);
+                checkError.Add(serverSocket);
+
+                for(int i = 0; i < clientSockets.Count; i++)
                 {
-                    int bytesRecieved = clientSocket.Receive(buffer);
-                    if (bytesRecieved == 0)
-                    {
-                        Console.WriteLine("Klijent je zavrsio sa radom (nema podataka).");
-                        continue;
-                    }
-                    string message = Encoding.UTF8.GetString(buffer);
-
-                    Console.WriteLine(message);
-                    if (message == "kraj")
-                    {
-                        Console.WriteLine("Server je zavrsio sa radom po zahtevu klijenta.");
-                        break;
-                    }
-
-
-                    string[] parts = message.Split(';');
-                    if (parts.Length != 2)
-                    {
-                        Console.WriteLine($"Neispravan format poruke: {message}");
-                        continue;
-                    }
-
-                    string response = Console.ReadLine();
-
-                    bytesRecieved = clientSocket.Send(Encoding.UTF8.GetBytes(response));
-                    if (response == "kraj")
-                    {
-                        Console.WriteLine("Server je zavrsio sa radom po zahtevu korisnika.");
-                        break;
-                    }
-           
-                    string key = parts[0]; 
-                    double lapTime; 
-
-                    if (!double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out lapTime))
-                    {
-                        Console.WriteLine($"Neispravno vreme kruga: '{parts[1]}'");
-                        continue;
-                    }
-
-                    //smestanje podataka u Dictionary
-                    if (!resultByLap.ContainsKey(key))
-                    {
-                        resultByLap[key] = new List<double>();
-                    }
-
-                    resultByLap[key].Add(lapTime);
-                    Console.WriteLine($"Primljeni podaci -> {key}, vreme kruga: {lapTime}s");
+                    checkRead.Add(clientSockets[i]);
+                    checkError.Add(clientSockets[i]);
                 }
-                catch (SocketException ex)
+
+                Socket.Select(checkRead, null, checkError, 1000*1000);  //1s
+
+                //greske
+                if(checkError.Count > 0)
                 {
-                    Console.WriteLine($"Doslo je do Socket greske: {ex.Message}");
-                    break;
+                    foreach (Socket s in checkError)
+                    {
+                        if(s == serverSocket)
+                        {
+                            Console.WriteLine("Server socket je prijavio grešku. Gasimo server.");
+                            return;
+                        }
+                        UkloniKlijenta(clientSockets, brojPoSoketu, aktivniAutomobili, markaPoBroju, endPointPoBroju, s);
+                    }
                 }
-                catch (Exception ex)
+                if(checkRead.Count == 0)
                 {
-                    Console.WriteLine($"Greska: {ex.Message}");
-                    break;
+                    continue;
+                }
+
+                //NOVI KLIJENTI
+                if (checkRead.Contains(serverSocket))
+                {
+                    while (true)
+                    {
+                        try
+                        {
+                            Socket client = serverSocket.Accept();
+                            client.Blocking = false;
+                            clientSockets.Add(client);
+
+                            IPEndPoint remote = client.RemoteEndPoint as IPEndPoint;
+                            Console.WriteLine($"Automobil povezan: {remote.Address}:{remote.Port}");
+
+                        }
+                        catch (SocketException)
+                        {
+                            //Nema vise pending accept poziva (non-blocking)
+                            break;
+                        }
+                    }
+                    checkRead.Remove(serverSocket);
+                }
+                // poruke od postojecih klijenata
+                foreach (Socket client in checkRead)
+                {
+                    try
+                    {
+                        byte[] buffer = new byte[1024];
+                        int bytesReceived = client.Receive(buffer);
+
+                        if (bytesReceived == 0)
+                        {
+                            Console.WriteLine("Klijent je zavrsio sa radom (disconnect).");
+                            UkloniKlijenta(clientSockets, brojPoSoketu, aktivniAutomobili, markaPoBroju, endPointPoBroju, client);
+                            continue;
+                        }
+                        string message = Encoding.UTF8.GetString(buffer, 0, bytesReceived).Trim();
+
+                        if (message.Equals("kraj", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Console.WriteLine("Klijent poslao kraj.");
+                            UkloniKlijenta(clientSockets, brojPoSoketu, aktivniAutomobili, markaPoBroju, endPointPoBroju, client);
+                            continue;
+                        }
+
+                        string[] parts = message.Split(';');
+                        if (parts.Length != 2)
+                        {
+                            Console.WriteLine("Neispravan format poruke: " + message);
+                            continue;
+                        }
+                        // prijava;0 => dodela broja
+                        if (parts[0] == "prijava")
+                        {
+                            string broj = sledeciBroj.ToString();
+                            sledeciBroj++;
+
+                            brojPoSoketu[client] = broj;
+                            aktivniAutomobili.Add(broj);
+
+
+                            IPEndPoint remote = client.RemoteEndPoint as IPEndPoint;
+                            if (remote != null)
+                            {
+                                endPointPoBroju[broj] = remote;
+                            }
+
+
+                            client.Send(Encoding.UTF8.GetBytes(broj));
+                            Console.WriteLine("Dodeljen trkački broj: " + broj);
+                            Console.WriteLine("Aktivni automobili: " + string.Join(", ", aktivniAutomobili));
+
+                            continue;
+                        }
+                        // key;lapTime
+                        string key = parts[0];
+                        double lapTime;
+
+                        if (!double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out lapTime))
+                        {
+                            Console.WriteLine("Neispravno vreme kruga: '" + parts[1] + "'");
+                            continue;
+                        }
+
+                        if (!resultByLap.ContainsKey(key))
+                            resultByLap[key] = new List<double>();
+
+                        resultByLap[key].Add(lapTime);
+
+                        Console.WriteLine($"Primljeni podaci -> {key}, vreme kruga: {lapTime}s");
+
+                        // key format: "broj-marka"
+                        string[] keyParts = key.Split('-');
+                        if (keyParts.Length >= 2)
+                        {
+                            string broj = keyParts[0];
+                            string marka = keyParts[1];
+                            markaPoBroju[broj] = marka;
+                        }
+                    }
+                    catch (SocketException)
+                    {
+                        Console.WriteLine("Klijent je zavrsio sa radom (socket exception).");
+                        UkloniKlijenta(clientSockets, brojPoSoketu, aktivniAutomobili, markaPoBroju, endPointPoBroju, client);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("Greška: " + ex.Message);
+                        UkloniKlijenta(clientSockets, brojPoSoketu, aktivniAutomobili, markaPoBroju, endPointPoBroju, client);
+                    }
                 }
             }
-            Console.WriteLine("Server zavrsava sa radom");
-            Console.ReadKey();
-            clientSocket.Close();
-            serverSocket.Close();
+        }
+        private static void UkloniKlijenta(List<Socket> clientSockets, Dictionary<Socket, string> brojPoSoketu, HashSet<string> aktivniAutomobili,
+            Dictionary<string, string> markaPoBroju, Dictionary<string, IPEndPoint> endPointPoBroju, Socket client)
+        {
+            try
+            {
+                string broj;
+                if (brojPoSoketu.TryGetValue(client, out broj))
+                {
+                    brojPoSoketu.Remove(client);
+                    aktivniAutomobili.Remove(broj);
+
+                    markaPoBroju.Remove(broj);
+                    endPointPoBroju.Remove(broj);
+                }
+
+                clientSockets.Remove(client);
+                client.Close();
+            }
+            catch { }
         }
     }
 }

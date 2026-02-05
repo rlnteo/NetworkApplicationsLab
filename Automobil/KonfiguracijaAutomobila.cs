@@ -8,10 +8,20 @@ namespace Automobil
 {
     public class KonfiguracijaAutomobila
     {
+        public enum TempoVoznje
+        {
+            Srednje,
+            Brze,
+            Sporije
+        }
         public string Marka { get; set; }
         public double PotrosnjaGuma { get; set; }
         public double PotrosnjaGoriva { get; set; }
+        public double TrenutnoGume { get; set; }
+        public double TrenutnoGorivo { get; set; }
+        public string StanjeGuma { get; set; }
 
+        public TempoVoznje Tempo { get; set; } = TempoVoznje.Srednje;
         public KonfiguracijaAutomobila() { }
         public KonfiguracijaAutomobila(string marka, double potrosnjaGuma, double potrosnjaGoriva)
         {
