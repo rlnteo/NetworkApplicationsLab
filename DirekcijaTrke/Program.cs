@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -67,7 +68,7 @@ namespace DirekcijaTrke
                             Console.WriteLine("Server socket je prijavio grešku. Gasimo server.");
                             return;
                         }
-                        UkloniKlijenta(clientSockets, brojPoSoketu, aktivniAutomobili, markaPoBroju, endPointPoBroju, s);
+                        UkloniKlijenta(clientSockets, brojPoSoketu, aktivniAutomobili, markaPoBroju, endPointPoBroju, resultByLap, s);
                     }
                 }
                 if(checkRead.Count == 0)
@@ -109,15 +110,19 @@ namespace DirekcijaTrke
                         if (bytesReceived == 0)
                         {
                             Console.WriteLine("Klijent je zavrsio sa radom (disconnect).");
-                            UkloniKlijenta(clientSockets, brojPoSoketu, aktivniAutomobili, markaPoBroju, endPointPoBroju, client);
+                            UkloniKlijenta(clientSockets, brojPoSoketu, aktivniAutomobili, markaPoBroju, endPointPoBroju, resultByLap, client);
                             continue;
                         }
                         string message = Encoding.UTF8.GetString(buffer, 0, bytesReceived).Trim();
 
-                        if (message.Equals("kraj", StringComparison.OrdinalIgnoreCase))
+                        if (message.StartsWith("Izlazi sa staze:"))
                         {
-                            Console.WriteLine("Klijent poslao kraj.");
-                            UkloniKlijenta(clientSockets, brojPoSoketu, aktivniAutomobili, markaPoBroju, endPointPoBroju, client);
+                            string[] partsKraj = message.Split(';');
+                            if (partsKraj.Length == 2)
+                            {
+                                Console.WriteLine($"Automobil {partsKraj[1]} je završio trku.");
+                            }
+                            UkloniKlijenta(clientSockets, brojPoSoketu, aktivniAutomobili, markaPoBroju, endPointPoBroju, resultByLap, client);
                             continue;
                         }
 
@@ -179,18 +184,18 @@ namespace DirekcijaTrke
                     catch (SocketException)
                     {
                         Console.WriteLine("Klijent je zavrsio sa radom (socket exception).");
-                        UkloniKlijenta(clientSockets, brojPoSoketu, aktivniAutomobili, markaPoBroju, endPointPoBroju, client);
+                        UkloniKlijenta(clientSockets, brojPoSoketu, aktivniAutomobili, markaPoBroju, endPointPoBroju, resultByLap, client);
                     }
                     catch (Exception ex)
                     {
                         Console.WriteLine("Greška: " + ex.Message);
-                        UkloniKlijenta(clientSockets, brojPoSoketu, aktivniAutomobili, markaPoBroju, endPointPoBroju, client);
+                        UkloniKlijenta(clientSockets, brojPoSoketu, aktivniAutomobili, markaPoBroju, endPointPoBroju, resultByLap, client);
                     }
                 }
             }
         }
         private static void UkloniKlijenta(List<Socket> clientSockets, Dictionary<Socket, string> brojPoSoketu, HashSet<string> aktivniAutomobili,
-            Dictionary<string, string> markaPoBroju, Dictionary<string, IPEndPoint> endPointPoBroju, Socket client)
+            Dictionary<string, string> markaPoBroju, Dictionary<string, IPEndPoint> endPointPoBroju, Dictionary<string, List<double>> resultByLap, Socket client)
         {
             try
             {
@@ -199,6 +204,12 @@ namespace DirekcijaTrke
                 {
                     brojPoSoketu.Remove(client);
                     aktivniAutomobili.Remove(broj);
+
+                    if (aktivniAutomobili.Count == 0)
+                    {
+                        IspisiRezultate(resultByLap);
+                    }
+
 
                     markaPoBroju.Remove(broj);
                     endPointPoBroju.Remove(broj);
@@ -209,5 +220,39 @@ namespace DirekcijaTrke
             }
             catch { }
         }
+
+        private static void IspisiRezultate(Dictionary<string, List<double>> resultByLap)
+        {
+            Console.WriteLine();
+            Console.WriteLine("===== REZULTATI TRKE =====");
+
+            foreach (var entry in resultByLap)
+            {
+                string autoKey = entry.Key;          // npr. "1-Mercedes"
+                List<double> vremena = entry.Value;
+
+                if (vremena.Count == 0)
+                    continue;
+
+                double najbrziKrug = vremena.Min();
+
+                Console.WriteLine($"Automobil {autoKey}:");
+
+                for (int i = 0; i < vremena.Count; i++)
+                {
+                    Console.WriteLine(
+                        $"Krug {i + 1}: {vremena[i]:F2}s"
+                    );
+                }
+
+                int bestLap = entry.Value.IndexOf(najbrziKrug) + 1;
+
+                Console.WriteLine($"Najbrži krug: {bestLap} ({najbrziKrug:F2}s)" );
+                Console.WriteLine();
+            }
+
+            Console.WriteLine("===== KRAJ REZULTATA =====");
+        }
+
     }
 }

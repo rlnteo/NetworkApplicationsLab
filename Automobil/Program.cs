@@ -50,13 +50,19 @@ namespace Automobil
 
 
             Socket udpClient = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            IPEndPoint udpEP = new IPEndPoint(IPAddress.Any, 6000);
+            IPEndPoint udpEP = new IPEndPoint(IPAddress.Any, 0);
             udpClient.Bind(udpEP);
-
             udpClient.Blocking = false;
+
+            IPEndPoint udpLocal = (IPEndPoint)udpClient.LocalEndPoint;
+            string udpInfo = "UDPPORT:" + udpLocal.Port;
+            clientSocket.Send(Encoding.UTF8.GetBytes(udpInfo));
+
 
             Console.WriteLine("\n---------------------------------------\n");
             Console.WriteLine($"UDP utičnica otvorena:");
+            IPEndPoint lokalniUdp = (IPEndPoint)udpClient.LocalEndPoint;
+            Console.WriteLine($"UDP utičnica automobila otvorena na: {lokalniUdp}");
             Console.WriteLine($"Lokalna adresa: {udpEP.Address}:{udpEP.Port}");
             Console.WriteLine("\n---------------------------------------\n");
 
@@ -109,7 +115,7 @@ namespace Automobil
                             Console.WriteLine($"Osnovno vreme: {osnovnoVreme} s");
                         }
                         // ===============================
-                        // PORUKA: TEMPO (opciono)
+                        // PORUKA: TEMPO
                         // ===============================
                         else if (poruka.StartsWith("Tempo"))
                         {
@@ -190,8 +196,8 @@ namespace Automobil
             Socket direkcijaTcp = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             direkcijaTcp.Connect(new IPEndPoint(IPAddress.Loopback, 5002));
 
-            string trkackiBroj = PreuzmiTrkackiBroj(direkcijaTcp);
-            Console.WriteLine("Trkački broj: " + trkackiBroj);
+            konfiguracija.TrkackiBroj = PreuzmiTrkackiBroj(direkcijaTcp);
+            Console.WriteLine("Trkački broj: " + konfiguracija.TrkackiBroj);
 
             int brojKruga = 1;
 
@@ -201,9 +207,15 @@ namespace Automobil
             double ukupnoGume = TrajanjeGuma(konfiguracija.StanjeGuma);
             double vremeKruga = osnovnoVreme;
 
-            while (konfiguracija.TrenutnoGorivo > 0 && konfiguracija.TrenutnoGume > 0)
+            while (konfiguracija.TrenutnoGorivo > 0 && konfiguracija.TrenutnoGume > 0 && konfiguracija.Aktivan)
             {
-                ObradiSveTempoPoruke(udpClient, konfiguracija);
+                ObradiSveTempoPoruke(udpClient, direkcijaTcp, konfiguracija);
+
+                if (!konfiguracija.Aktivan)
+                {
+                    Console.WriteLine("Automobil je pozvan u garažu.");
+                    break;
+                }
                 // 1) Potrošnja (azurira se odmah na konfiguraciji)
                 double potrosnjaGuma = konfiguracija.PotrosnjaGuma;
                 double potrosnjaGoriva = konfiguracija.PotrosnjaGoriva;
@@ -255,10 +267,11 @@ namespace Automobil
                 }
 
                 // Zaštita da ne postane 0/negativno (inače dobijaš "nerealne uslove")
-                if (vremeKruga < 1.0)
+                if (vremeKruga <= 0)
                 {
                     vremeKruga = 1.0;
                 }
+
                 // 6) Ispis + sleep na vreme kruga
                 Console.WriteLine($"Krug {brojKruga}");
                 Console.WriteLine($"Tempo: {konfiguracija.Tempo}");
@@ -269,25 +282,28 @@ namespace Automobil
 
                 Thread.Sleep((int)(vremeKruga * 1000));
 
-                // (E) pošalji Direkciji vreme kruga: "broj-proizvodjac;vreme"
-                string key = trkackiBroj + "-" + konfiguracija.Marka;
-                string porukaDirekciji = key + ";" + vremeKruga.ToString(CultureInfo.InvariantCulture);
+                // pošalji Direkciji vreme kruga: "broj-proizvodjac;vreme"
+                string key = konfiguracija.TrkackiBroj + "-" + konfiguracija.Marka;
+                string porukaDirekciji = key + ";" + vremeKruga.ToString("F2", CultureInfo.InvariantCulture);
                 direkcijaTcp.Send(Encoding.UTF8.GetBytes(porukaDirekciji));
 
 
-                // (F) pošalji Garaži stanje (UDP)
-                string stanje = "Stanje: Gume - " +
-                                konfiguracija.TrenutnoGume.ToString(CultureInfo.InvariantCulture) + ", Gorivo - " +
-                                konfiguracija.TrenutnoGorivo.ToString(CultureInfo.InvariantCulture);
+                // pošalji Garaži stanje (UDP)
+                string stanje = $"Auto {konfiguracija.TrkackiBroj}-{konfiguracija.Marka} | " +
+                                $"Gume: {konfiguracija.TrenutnoGume:F2}, Gorivo: {konfiguracija.TrenutnoGorivo:F2}";
+
 
                 byte[] dataStanje = Encoding.UTF8.GetBytes(stanje);
                 udpClient.SendTo(dataStanje, 0, dataStanje.Length, SocketFlags.None, garazaUdpEP);
-
 
                 brojKruga++;
             }
 
             Console.WriteLine("\nAutomobil završava vožnju.\n");
+            string krajPoruka = $"Izlazi sa staze: {konfiguracija.TrkackiBroj}-{konfiguracija.Marka}";
+            direkcijaTcp.Send(Encoding.UTF8.GetBytes(krajPoruka));
+
+
 
             try { direkcijaTcp.Close(); } catch { }
         }
@@ -295,7 +311,7 @@ namespace Automobil
         private static string PreuzmiTrkackiBroj(Socket direkcijaTcp)
         {
             // Minimalno uklapanje sa postojećom Direkcijom:
-            // Direkcija parsira "key;time" i zatim šalje nazad ono što operator ukuca.
+            // Direkcija dodeljuje trkački broj nakon poruke "prijava;0"
             // Pošaljemo inicijalnu poruku i čekamo odgovor.
             string init = "prijava;0";
             direkcijaTcp.Send(Encoding.UTF8.GetBytes(init));
@@ -305,7 +321,7 @@ namespace Automobil
             return Encoding.UTF8.GetString(buf, 0, n).Trim();
         }
 
-        private static void ObradiSveTempoPoruke(Socket udpClient, KonfiguracijaAutomobila konfiguracija)
+        private static void ObradiSveTempoPoruke(Socket udpClient, Socket direkcijaTcp,KonfiguracijaAutomobila konfiguracija)
         {
             try
             {
@@ -316,6 +332,14 @@ namespace Automobil
                     int n = udpClient.ReceiveFrom(b, ref ep);
 
                     string poruka = Encoding.UTF8.GetString(b, 0, n).Trim();
+
+                    if (poruka.StartsWith("Izlazak", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Console.WriteLine("Direktiva: Izlazak sa staze.");
+                        konfiguracija.Aktivan = false;
+                        return;
+                    }
+
                     if (!poruka.StartsWith("Tempo"))
                         continue;
 

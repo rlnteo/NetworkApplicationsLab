@@ -15,11 +15,14 @@ namespace Automobil
             Sporije
         }
         public string Marka { get; set; }
+        public string TrkackiBroj { get; set; }
         public double PotrosnjaGuma { get; set; }
         public double PotrosnjaGoriva { get; set; }
         public double TrenutnoGume { get; set; }
         public double TrenutnoGorivo { get; set; }
         public string StanjeGuma { get; set; }
+        public bool Aktivan { get; set; } = true;
+
 
         public TempoVoznje Tempo { get; set; } = TempoVoznje.Srednje;
         public KonfiguracijaAutomobila() { }
