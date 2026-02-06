@@ -65,7 +65,7 @@ namespace Garaza
 
             byte[] buf = new byte[1024];
 
-            Console.WriteLine("\n\nKomande: b=brže, s=sporije, m=srednje, q=izlaz\n");
+            Console.WriteLine("\n\nKomande: b=brže, s=sporije, m=srednje, q=izlaz sa staze\n");
 
 
             // ================== GLAVNA PETLJA ==================
@@ -103,7 +103,7 @@ namespace Garaza
 
                                 autoUdpEndpoints[auto] = autoUdpEP;
 
-                                Console.WriteLine($"Automobil povezan: {auto.RemoteEndPoint}, UDP port {port}");
+                                Console.WriteLine($"\nAutomobil povezan: {auto.RemoteEndPoint}, UDP port {port}\n");
 
                                 // Pošalji konfiguraciju
                                 udpSocketSend.SendTo(dataStaza, autoUdpEP);
@@ -184,11 +184,14 @@ namespace Garaza
                         System.Globalization.CultureInfo.InvariantCulture
                     );
                     double ukupnoGume = gume == 'M' ? 80 : gume == 'S' ? 100 : 120;
-                    double procenatGuma = stanjeGume / ukupnoGume;
-                    bool alarmGume = stanjeGume < 0.25 * ukupnoGume;
+                    double potrosnjaGumaPoKrugu = duzinaStaze * PotrosnjaGumaPoMarki(marka);
+                    double stanjeGumaPoslijeKruga = stanjeGume - potrosnjaGumaPoKrugu; //provjerava unaprijed za jedan krug
+                    bool alarmGume = stanjeGumaPoslijeKruga < 0.25 * ukupnoGume;
 
-                    double gorivoZaDvaKruga = 2 * duzinaStaze * PotrosnjaGorivaPoMarki(marka);
-                    bool alarmGorivo = gorivo < gorivoZaDvaKruga;
+
+                    double potrosnjaJedanKrug = duzinaStaze * PotrosnjaGorivaPoMarki(marka);
+                    bool alarmGorivo = stanjeGorivo < 3 * potrosnjaJedanKrug; //provjerava unaprijed za jedan krug
+
 
                     string autoKey = $"{trkackiBroj}-{marka}";
 
@@ -204,11 +207,19 @@ namespace Garaza
 
                         byte[] izlaz = Encoding.UTF8.GetBytes("Izlazak");
 
-                        Socket autoSocket = autoUdpEndpoints
-                            .First(x => ((IPEndPoint)x.Value).Address.Equals(((IPEndPoint)from).Address))
-                            .Key;
+                        IPEndPoint fromEp = (IPEndPoint)from;
 
-                        udpSocketSend.SendTo(izlaz, autoUdpEndpoints[autoSocket]);
+                        var autoEntry = autoUdpEndpoints.FirstOrDefault(x =>
+                        {
+                            var ep = (IPEndPoint)x.Value;
+                            return ep.Address.Equals(fromEp.Address) && ep.Port == fromEp.Port;
+                        });
+
+                        if (autoEntry.Key != null)
+                        {
+                            udpSocketSend.SendTo(izlaz, autoEntry.Value);
+                        }
+
                     }
 
 
@@ -220,6 +231,17 @@ namespace Garaza
             udpSocketRecv.Close();
             tcpSocket.Close();
             Console.WriteLine("Garaža završava sa radom.");
+        }
+        static double PotrosnjaGumaPoMarki(string marka)
+        {
+            switch (marka)
+            {
+                case "Mercedes": return 0.4;
+                case "Ferari": return 0.3;
+                case "Reno": return 0.5;
+                case "Honda": return 0.4;
+                default: return 0.4;
+            }
         }
         static double PotrosnjaGorivaPoMarki(string marka)
         {

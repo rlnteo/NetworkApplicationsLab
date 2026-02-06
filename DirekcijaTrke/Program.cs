@@ -34,10 +34,13 @@ namespace DirekcijaTrke
             serverSocket.Listen(10);
             serverSocket.Blocking = false;
 
+            Console.WriteLine("\n------------------------------------");
             Console.WriteLine("Direkcija trke je pokrenuta.");
             Console.WriteLine($"IP: {IPAddress.Any}");
             Console.WriteLine($"Port: {serverPort}");
             Console.WriteLine("Čeka se povezivanje automobila...");
+            Console.WriteLine("\n------------------------------------\n");
+
 
             List<Socket> clientSockets = new List<Socket>();
 
@@ -88,7 +91,10 @@ namespace DirekcijaTrke
                             clientSockets.Add(client);
 
                             IPEndPoint remote = client.RemoteEndPoint as IPEndPoint;
+                            Console.WriteLine("\n------------------------------------");
                             Console.WriteLine($"Automobil povezan: {remote.Address}:{remote.Port}");
+                            Console.WriteLine("------------------------------------\n");
+
 
                         }
                         catch (SocketException)
@@ -150,8 +156,10 @@ namespace DirekcijaTrke
 
 
                             client.Send(Encoding.UTF8.GetBytes(broj));
+                            Console.WriteLine("\n------------------------------------\n");
                             Console.WriteLine("Dodeljen trkački broj: " + broj);
                             Console.WriteLine("Aktivni automobili: " + string.Join(", ", aktivniAutomobili));
+                            Console.WriteLine("\n------------------------------------\n");
 
                             continue;
                         }

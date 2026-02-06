@@ -83,7 +83,7 @@ namespace Automobil
 
             try
             {
-                Console.WriteLine("Čekam UDP poruku od garaže...");
+                Console.WriteLine("Čekam UDP poruku od garaže...\n");
 
                 while (true)
                 {
@@ -110,9 +110,12 @@ namespace Automobil
                             osnovnoVreme = double.Parse(vrijednosti[1]);
                             stazaPrimljena = true;
 
+                            Console.WriteLine("\n------------------------------------\n");
                             Console.WriteLine($"Staza primljena:");
                             Console.WriteLine($"Dužina: {duzinaStaze} km");
                             Console.WriteLine($"Osnovno vreme: {osnovnoVreme} s");
+                            Console.WriteLine("\n------------------------------------\n");
+
                         }
                         // ===============================
                         // PORUKA: TEMPO
@@ -144,7 +147,8 @@ namespace Automobil
                             izlazakGorivo = double.Parse(vrednosti[1], CultureInfo.InvariantCulture);
                             izlazakPrimljen = true;
 
-                            Console.WriteLine($"Primljen izlazak na stazu -> gume: {izlazakGuma}, gorivo: {izlazakGorivo}");
+                            Console.WriteLine("\n------------------------------------");
+                            Console.WriteLine($"Primljen izlazak na stazu: ");
 
                         }
                         if (stazaPrimljena && izlazakPrimljen)
@@ -156,6 +160,8 @@ namespace Automobil
                             Console.WriteLine($"Gume: {konfiguracija.StanjeGuma}, trajanje {konfiguracija.TrenutnoGume} km");
                             Console.WriteLine($"Početno gorivo: {konfiguracija.TrenutnoGorivo} litara");
                             Console.WriteLine($"Dužina: {duzinaStaze} km");
+                            Console.WriteLine("\n------------------------------------\n");
+
 
                             SimulirajVoznju(udpClient, garazaUdpEP, duzinaStaze, osnovnoVreme, konfiguracija);
                             break;
@@ -231,13 +237,15 @@ namespace Automobil
 
                 if (konfiguracija.TrenutnoGorivo <= 0)
                 {
-                    Console.WriteLine("Nema goriva.");
+                    Console.WriteLine("Nema dovoljno goriva.");
+                    konfiguracija.Aktivan = false;
                     break;
                 }
 
                 if (konfiguracija.TrenutnoGume <= 0)
                 {
                     Console.WriteLine("Gume su istrošene.");
+                    konfiguracija.Aktivan = false;
                     break;
                 }
 
@@ -295,6 +303,15 @@ namespace Automobil
 
                 byte[] dataStanje = Encoding.UTF8.GetBytes(stanje);
                 udpClient.SendTo(dataStanje, 0, dataStanje.Length, SocketFlags.None, garazaUdpEP);
+
+                // odmah proveri da li je alarm stigao
+                ObradiSveTempoPoruke(udpClient, direkcijaTcp, konfiguracija);
+
+                if (!konfiguracija.Aktivan)
+                {
+                    Console.WriteLine("Automobil je pozvan u garažu.");
+                    break;
+                }
 
                 brojKruga++;
             }
